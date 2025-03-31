@@ -3,6 +3,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Heart, Archive, ArrowLeft2, ArrowRight2 } from "iconsax-react";
+import { updateFavourites, updateBookmarks } from "@/lib/update";
+import { auth, db } from "@/app/firebase/config";
+import { useAuthState } from "react-firebase-hooks/auth";
+import { doc, getDoc } from "firebase/firestore";
 
 interface Popular {
   title: string;
@@ -17,9 +21,10 @@ function MovieComponents({
   toggleBookmark,
 }: {
   topPopular: Popular[];
-  toggleFavourite: (value: number) => void;
-  toggleBookmark: (value: number) => void;
+  toggleFavourite: (index: number, uid: string, movieId: number) => void;
+  toggleBookmark: (value: number, uid: string, movieId: number) => void;
 }) {
+  const [user] = useAuthState(auth);
   const baseUrl = "https://image.tmdb.org/t/p/w500/";
   return topPopular.map((value, index) => (
     <div
@@ -49,7 +54,7 @@ function MovieComponents({
             className="cursor-pointer hover:opacity-85"
             onClick={() => {
               // console.log(index);
-              toggleFavourite(index);
+              toggleFavourite(index, user?.uid as string, Number(value.id));
             }}
           >
             {!value.favourite ? (
@@ -62,7 +67,7 @@ function MovieComponents({
             className="cursor-pointer hover:opacity-85"
             onClick={() => {
               // console.log(index);
-              toggleBookmark(index);
+              toggleBookmark(index, user?.uid as string, Number(value.id));
             }}
           >
             {!value.bookmark ? (
@@ -80,15 +85,20 @@ export default function Page() {
   const [topPopular, setTopPopular] = useState<Popular[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
+  const [user] = useAuthState(auth);
+  const uid = user?.uid;
+  const [movies, setMovies] = useState<Popular[] | null>(null);
 
-  function toggleFavourite(index: number) {
+  function toggleFavourite(index: number, uid: string, movieId: number) {
     const current = topPopular[index].favourite;
+    updateFavourites(uid, !current, movieId);
     const newArray = topPopular.slice();
     newArray[index].favourite = !current;
     setTopPopular(newArray);
   }
-  function toggleBookmark(index: number) {
+  function toggleBookmark(index: number, uid: string, movieId: number) {
     const current = topPopular[index].bookmark;
+    updateBookmarks(uid, !current, movieId);
     const newArray = topPopular.slice();
     newArray[index].bookmark = !current;
     setTopPopular(newArray);
@@ -106,7 +116,7 @@ export default function Page() {
       fetch(`https://api.themoviedb.org/3/movie/popular?page=${page}`, options)
         .then((res) => res.json())
         .then((res) => {
-          // console.log(res);
+          // console.log(favourites?.includes(res.result[4].id));
           setTotalPages(res.total_pages);
           const myArray = res.results.map((value: Popular) => ({
             title: value.title,
@@ -122,6 +132,32 @@ export default function Page() {
     }
     fetchPopularMovies();
   }, [page]);
+  useEffect(() => {
+    async function getUserInfo() {
+      if (uid) {
+        const docRef = doc(db, "users", uid);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const fav = docSnap.data().favourites;
+          const bk = docSnap.data().bookmarks;
+          setMovies(
+            topPopular.map((value) => ({
+              ...value,
+              favourite: fav.includes(Number(value.id)),
+              bookmark: bk.includes(Number(value.id)),
+            }))
+          );
+
+          // console.log("Document data:", docSnap.data());
+        } else {
+          // docSnap.data() will be undefined in this case
+          console.log("No such document!");
+        }
+      }
+    }
+    getUserInfo();
+  });
 
   return (
     <div className="py-[48px] flex flex-col gap-[18px] max-w-[1350px] w-[98%]">
@@ -129,11 +165,13 @@ export default function Page() {
       {topPopular.length !== 0 ? (
         <div className="flex flex-col gap-[18px]">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-[24px] gap-y-[24px] w-full">
-            <MovieComponents
-              topPopular={topPopular}
-              toggleFavourite={toggleFavourite}
-              toggleBookmark={toggleBookmark}
-            />
+            {topPopular && movies && (
+              <MovieComponents
+                topPopular={movies}
+                toggleFavourite={toggleFavourite}
+                toggleBookmark={toggleBookmark}
+              />
+            )}
           </div>
           <div className="flex items-center w-full justify-center gap-[12px]">
             <button

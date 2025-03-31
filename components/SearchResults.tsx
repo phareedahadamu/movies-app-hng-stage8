@@ -3,9 +3,11 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { Heart, Archive, ArrowLeft2, ArrowRight2 } from "iconsax-react";
 import RedirectModal from "@/components/RedirectModal";
-import { auth } from "@/app/firebase/config";
-import { useAuthState } from "react-firebase-hooks/auth";
 import { useRouter } from "next/navigation";
+import { updateFavourites, updateBookmarks } from "@/lib/update";
+import { auth, db } from "@/app/firebase/config";
+import { useAuthState } from "react-firebase-hooks/auth";
+import { doc, getDoc } from "firebase/firestore";
 interface Movie {
   title: string;
   backdrop_path: string;
@@ -21,11 +23,12 @@ function MovieComponents({
   setRedirectModal,
 }: {
   movies: Movie[];
-  toggleFavourite: (value: number) => void;
-  toggleBookmark: (value: number) => void;
+  toggleFavourite: (index: number, uid: string, movieId: number) => void;
+  toggleBookmark: (value: number, uid: string, movieId: number) => void;
   isAuth: boolean;
   setRedirectModal: (value: boolean) => void;
 }) {
+  const [user] = useAuthState(auth);
   const baseUrl = "https://image.tmdb.org/t/p/w500/";
   const router = useRouter();
   return movies.map((value, index) => (
@@ -64,7 +67,8 @@ function MovieComponents({
               // console.log(index);
               if (!isAuth) {
                 setRedirectModal(true);
-              } else toggleFavourite(index);
+              } else
+                toggleFavourite(index, user?.uid as string, Number(value.id));
             }}
           >
             {!value.favourite ? (
@@ -79,7 +83,8 @@ function MovieComponents({
               // console.log(index);
               if (!isAuth) {
                 setRedirectModal(true);
-              } else toggleBookmark(index);
+              } else
+                toggleBookmark(index, user?.uid as string, Number(value.id));
             }}
           >
             {!value.bookmark ? (
@@ -99,15 +104,19 @@ export default function SearchResult({ query }: { query: string }) {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [user] = useAuthState(auth);
   const [redirectModal, setRedirectModal] = useState<boolean>(false);
+  const [movies2, setMovies2] = useState<Movie[] | null>(null);
+  const uid = user?.uid;
 
-  function toggleFavourite(index: number) {
+  function toggleFavourite(index: number, uid: string, movieId: number) {
     const current = movies[index].favourite;
+    updateFavourites(uid, !current, movieId);
     const newArray = movies.slice();
     newArray[index].favourite = !current;
     setMovies(newArray);
   }
-  function toggleBookmark(index: number) {
+  function toggleBookmark(index: number, uid: string, movieId: number) {
     const current = movies[index].bookmark;
+    updateBookmarks(uid, !current, movieId);
     const newArray = movies.slice();
     newArray[index].bookmark = !current;
     setMovies(newArray);
@@ -145,6 +154,32 @@ export default function SearchResult({ query }: { query: string }) {
     }
     fetchMovies();
   }, [page, query]);
+  useEffect(() => {
+    async function getUserInfo() {
+      if (uid) {
+        const docRef = doc(db, "users", uid);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const fav = docSnap.data().favourites;
+          const bk = docSnap.data().bookmarks;
+          setMovies2(
+            movies.map((value) => ({
+              ...value,
+              favourite: fav.includes(Number(value.id)),
+              bookmark: bk.includes(Number(value.id)),
+            }))
+          );
+
+          // console.log("Document data:", docSnap.data());
+        } else {
+          // docSnap.data() will be undefined in this case
+          console.log("No such document!");
+        }
+      }
+    }
+    getUserInfo();
+  });
   return (
     <div className="py-[48px] flex flex-col gap-[18px] max-w-[1350px] w-[98%] relative">
       {redirectModal && <RedirectModal close={setRedirectModal} />}
@@ -152,13 +187,15 @@ export default function SearchResult({ query }: { query: string }) {
       {movies.length !== 0 ? (
         <div className="flex flex-col gap-[18px]">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-[24px] gap-y-[24px] w-full">
-            <MovieComponents
-              movies={movies}
-              toggleFavourite={toggleFavourite}
-              toggleBookmark={toggleBookmark}
-              isAuth={user ? true : false}
-              setRedirectModal={setRedirectModal}
-            />
+            {movies2 && (
+              <MovieComponents
+                movies={movies2}
+                toggleFavourite={toggleFavourite}
+                toggleBookmark={toggleBookmark}
+                isAuth={user ? true : false}
+                setRedirectModal={setRedirectModal}
+              />
+            )}
           </div>
           <div className="flex items-center w-full justify-center gap-[12px]">
             <button

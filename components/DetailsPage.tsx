@@ -2,6 +2,10 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Heart, Archive } from "iconsax-react";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "@/app/firebase/config";
+import { useAuthState } from "react-firebase-hooks/auth";
+import { updateFavourites, updateBookmarks } from "@/lib/update";
 
 interface Genre {
   id: string;
@@ -21,6 +25,7 @@ interface Movie {
 
 export default function DetailsPage({ movieId }: { movieId: string }) {
   const [movie, setMovie] = useState<Movie | null>(null);
+  const [user] = useAuthState(auth);
   const baseUrl = "https://image.tmdb.org/t/p/w500/";
   useEffect(() => {
     async function fetchMovie() {
@@ -34,8 +39,8 @@ export default function DetailsPage({ movieId }: { movieId: string }) {
       fetch(`https://api.themoviedb.org/3/movie/${movieId}`, options)
         .then((res) => res.json())
         .then((res) => {
-          console.log(res);
-          if (res)
+          // console.log(res);
+          if (res) {
             setMovie({
               title: res.title,
               tagline: res.tagline,
@@ -47,11 +52,37 @@ export default function DetailsPage({ movieId }: { movieId: string }) {
               favourite: false,
               bookmark: false,
             });
+          }
         })
         .catch((err) => console.error(err));
     }
     fetchMovie();
   }, [movieId]);
+  useEffect(() => {
+    async function getUserInfo() {
+      if (user?.uid) {
+        const docRef = doc(db, "users", user?.uid);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const fav = docSnap.data().favourites;
+          const bk = docSnap.data().bookmarks;
+          if (movie)
+            setMovie({
+              ...movie,
+              favourite: fav.includes(Number(movieId)),
+              bookmark: bk.includes(Number(movieId)),
+            });
+
+          // console.log("Document data:", docSnap.data());
+        } else {
+          // docSnap.data() will be undefined in this case
+          console.log("No such document!");
+        }
+      }
+    }
+    getUserInfo();
+  });
   // console.log(movie);
   return (
     <div className="py-[56px] flex flex-col gap-[12px] max-w-[1350px] w-[98%] items-center">
@@ -74,6 +105,7 @@ export default function DetailsPage({ movieId }: { movieId: string }) {
                   className="cursor-pointer hover:opacity-85"
                   onClick={() => {
                     const fav = !movie.favourite;
+                    updateFavourites(user?.uid as string, fav, Number(movieId));
                     setMovie({ ...movie, favourite: fav });
                   }}
                 >
@@ -87,6 +119,7 @@ export default function DetailsPage({ movieId }: { movieId: string }) {
                   className="cursor-pointer hover:opacity-85"
                   onClick={() => {
                     const bk = !movie.bookmark;
+                    updateBookmarks(user?.uid as string, bk, Number(movieId));
                     setMovie({ ...movie, bookmark: bk });
                   }}
                 >

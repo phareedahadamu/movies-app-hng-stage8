@@ -138,7 +138,7 @@ export default function SearchResult({ query }: { query: string }) {
       )
         .then((res) => res.json())
         .then((res) => {
-          //   console.log(res);
+          // console.log(res);
           setTotalPages(res.total_pages);
           const myArray = res.results.map((value: Movie) => ({
             title: value.title,
@@ -180,16 +180,25 @@ export default function SearchResult({ query }: { query: string }) {
     }
     getUserInfo();
   });
+  // console.log(movies2);
   return (
     <div className="py-[48px] flex flex-col gap-[18px] max-w-[1350px] w-[98%] relative">
       {redirectModal && <RedirectModal close={setRedirectModal} />}
-      <p>Showing results for {query.replace("%20", " ")}</p>
+      <p>Showing results for {query.replaceAll("%20", " ")}</p>
       {movies.length !== 0 ? (
         <div className="flex flex-col gap-[18px]">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-[24px] gap-y-[24px] w-full">
-            {movies2 && (
+            {user?.uid && movies2 ? (
               <MovieComponents
                 movies={movies2}
+                toggleFavourite={toggleFavourite}
+                toggleBookmark={toggleBookmark}
+                isAuth={user ? true : false}
+                setRedirectModal={setRedirectModal}
+              />
+            ) : (
+              <MovieComponents
+                movies={movies}
                 toggleFavourite={toggleFavourite}
                 toggleBookmark={toggleBookmark}
                 isAuth={user ? true : false}
